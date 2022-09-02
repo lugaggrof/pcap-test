@@ -1,6 +1,8 @@
 #include <pcap.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include "libnet.h"
 
 void usage() {
 	printf("syntax: pcap-test <interface>\n");
@@ -11,7 +13,7 @@ typedef struct {
 	char* dev_;
 } Param;
 
-Param param  = {
+Param param = {
 	.dev_ = NULL
 };
 
@@ -22,6 +24,78 @@ bool parse(Param* param, int argc, char* argv[]) {
 	}
 	param->dev_ = argv[1];
 	return true;
+}
+
+bool isTcp(const u_char *packet) {
+  struct libnet_ethernet_hdr *h;
+  h = (struct libnet_ethernet_hdr *)packet;
+  uint16_t ether_type = htons(h->ether_type);
+  return ether_type == 0x0800;
+}
+
+void readMac(const u_char *packet) {
+  struct libnet_ethernet_hdr *h;
+  h = (struct libnet_ethernet_hdr *)packet;
+
+  printf("source mac: ");
+  for (int i = 0; i < ETHER_ADDR_LEN; i++) {
+    printf("%02x", h->ether_shost[i]);
+    if (i != ETHER_ADDR_LEN - 1) {
+      printf(":");
+    }
+  }
+  printf("\n");
+
+  printf("destination mac: ");
+  for (int i = 0; i < ETHER_ADDR_LEN; i++) {
+    printf("%02x", h->ether_dhost[i]);
+    if (i != ETHER_ADDR_LEN - 1) {
+      printf(":");
+    }
+  }
+  printf("\n");
+}
+
+void readIp(const u_char *packet) {
+  struct libnet_ipv4_hdr *h;
+  h = (struct libnet_ipv4_hdr *) (packet + sizeof(struct libnet_ipv4_hdr));
+
+  printf("source ip: ");
+  printf("%s\n", inet_ntoa(h->ip_src));
+
+  printf("destination ip: ");
+  printf("%s\n", inet_ntoa(h->ip_dst));
+}
+
+void readPort(const u_char *packet) {
+  struct libnet_tcp_hdr *h;
+  h = (struct libnet_tcp_hdr *) (packet + sizeof(struct libnet_ipv4_hdr) + sizeof(struct libnet_ipv4_hdr));
+
+  printf("source port: ");
+  printf("%d\n", ntohs(h->th_sport));
+
+  printf("destination port: ");
+  printf("%d\n", ntohs(h->th_dport));
+}
+
+void readData(const u_char *packet) {
+  int ethernet_hdr_size = 14;
+  int tcp_hdr_size = 20;
+  int ipv4_hdr_size = 20;
+  int packetDataOffset = ethernet_hdr_size + tcp_hdr_size + ipv4_hdr_size;
+  for (int i = packetDataOffset; i < packetDataOffset + 10; i++) {
+    printf("0x%02x ", packet + i);
+  }
+}
+
+void readPcap(const u_char *packet) {
+  bool read_packet = isTcp(packet);
+  if (read_packet) {
+    readMac(packet);
+    readIp(packet);
+    readPort(packet);
+    readData(packet);
+  }
 }
 
 int main(int argc, char* argv[]) {
@@ -44,8 +118,10 @@ int main(int argc, char* argv[]) {
 			printf("pcap_next_ex return %d(%s)\n", res, pcap_geterr(pcap));
 			break;
 		}
-		printf("%u bytes captured\n", header->caplen);
+    readPcap(packet);
+		// printf("%u bytes captured\n", header->caplen);
 	}
 
 	pcap_close(pcap);
 }
+
