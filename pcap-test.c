@@ -30,6 +30,12 @@ bool isTcp(const u_char *packet) {
   struct libnet_ethernet_hdr *h;
   h = (struct libnet_ethernet_hdr *)packet;
   uint16_t ether_type = htons(h->ether_type);
+
+
+  struct libnet_ipv4_hdr *iph;
+  iph = (struct libnet_ipv4_hdr *) (packet + sizeof(struct libnet_ipv4_hdr));
+  uint8_t ip_p = iph->ip_p;
+  // printf("ip protocol version: %u\n", ip_p);
   return ether_type == 0x0800;
 }
 
